@@ -1,32 +1,32 @@
 package main
 
 import (
-	"github.com/urfave/cli"
-	"go/token"
-	"go/parser"
-	"fmt"
-	"golang.org/x/tools/go/ast/astutil"
-	"strings"
 	"bytes"
-	"go/printer"
-	"io/ioutil"
-	"os"
-	"path/filepath"
-	"path"
+	"fmt"
 	"github.com/fatih/color"
+	"github.com/rinchsan/gosimports"
+	"github.com/urfave/cli"
+	"go/parser"
+	"go/printer"
+	"go/token"
+	"golang.org/x/tools/go/ast/astutil"
+	"os"
+	"path"
+	"path/filepath"
+	"strings"
 )
 
-func main()  {
+func main() {
 	app := cli.NewApp()
 	app.Name = "gorename"
 	app.Usage = "Rename golang package"
-	app.Version = "0.0.1"
+	app.Version = "v1.0.0"
 	app.ArgsUsage = "[source file or directory path] [old package name] [new package name]"
-	app.Author = "YuShuai Liu <admin@liuyushuai.com>"
+	app.Author = "jzero-io"
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
-			Name: "source, s",
+			Name:  "source, s",
 			Value: "./",
 			Usage: "source package path or file path",
 		},
@@ -39,57 +39,54 @@ func main()  {
 
 		fileInfo, err := os.Stat(source)
 		if err != nil {
-			cli.NewExitError("source is not a directory or file", -1)
+			cli.HandleExitCoder(cli.NewExitError("source is not a directory or file", -1))
 			return
 		}
 
 		if from == "" || to == "" {
-			cli.ShowAppHelp(c)
+			if err = cli.ShowAppHelp(c); err != nil {
+				cli.HandleExitCoder(cli.NewExitError(err, -1))
+			}
 			return
 		}
 
 		fmt.Println(color.GreenString("[INFO]"), "start update import ", from, " to ", to)
 
-		var exitError *cli.ExitError
+		// rename dir name
+		if _, err := os.Stat(filepath.Base(source)); err == nil {
+			if err = os.Rename(filepath.Base(from), filepath.Base(to)); err != nil {
+				cli.HandleExitCoder(cli.NewExitError(err, -1))
+			}
+		}
 
 		if !fileInfo.IsDir() {
-			exitError = ProcessFile(source, from ,to)
+			err = ProcessFile(source, from, to)
 		} else {
-			exitError = ProcessDir(source, from, to , c)
+			err = ProcessDir(source, from, to)
 		}
-		if exitError != nil {
-			fmt.Println(color.YellowString("[WARN]"), exitError.Error())
+		if err != nil {
+			fmt.Println(color.YellowString("[WARN]"), err.Error())
 		} else {
 			fmt.Println(color.GreenString("[INFO] success!"))
 		}
 	}
-	app.Run(os.Args)
+	if err := app.Run(os.Args); err != nil {
+		cli.HandleExitCoder(cli.NewExitError(err, -1))
+	}
 }
 
-func ProcessDir(dir string, from string, to string, c *cli.Context) *cli.ExitError {
-
-	answer := ""
-	absDir,_ := filepath.Abs(dir)
-	fmt.Print(color.YellowString("[WARNING] "), "Rename the package ", color.YellowString(from),
-		" to ", color.YellowString(to), " which files in directory of ",
-			color.YellowString(absDir), " ? Yes (Y) or No (N):")
-	fmt.Scanln(&answer)
-
-
-	if answer != "Yes" && answer != "Y" {
-		return cli.NewExitError("Do nothing", 0)
-	}
-
-	filepath.Walk(dir, func(filepath string, info os.FileInfo, err error) error {
+func ProcessDir(dir string, from string, to string) error {
+	return filepath.Walk(dir, func(filepath string, info os.FileInfo, err error) error {
 		if path.Ext(filepath) == ".go" {
-			ProcessFile(filepath, from ,to)
+			if err = ProcessFile(filepath, from, to); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
-	return nil
 }
 
-func ProcessFile(filePath string, from string, to string) *cli.ExitError {
+func ProcessFile(filePath string, from string, to string) error {
 	fSet := token.NewFileSet()
 
 	file, err := parser.ParseFile(fSet, filePath, nil, parser.ParseComments)
@@ -102,16 +99,14 @@ func ProcessFile(filePath string, from string, to string) *cli.ExitError {
 
 	changeNum := 0
 
-
 	for _, tempPackage := range imports {
 		for _, mImport := range tempPackage {
 			importString := strings.TrimSuffix(strings.TrimPrefix(mImport.Path.Value, "\""), "\"")
 
 			if strings.HasPrefix(importString, from) {
-				changeNum ++
+				changeNum++
 
-				replacePackage := strings.Replace(importString, from , to, -1)
-
+				replacePackage := strings.Replace(importString, from, to, -1)
 
 				if mImport.Name != nil && len(mImport.Name.Name) > 0 {
 					astutil.DeleteNamedImport(fSet, file, mImport.Name.Name, importString)
@@ -121,16 +116,25 @@ func ProcessFile(filePath string, from string, to string) *cli.ExitError {
 					astutil.AddImport(fSet, file, replacePackage)
 				}
 			}
-			
 		}
 	}
 
 	if changeNum > 0 {
 		var outputBuffer bytes.Buffer
 
-		printer.Fprint(&outputBuffer, fSet, file)
+		err = printer.Fprint(&outputBuffer, fSet, file)
+		if err != nil {
+			return err
+		}
 
-		ioutil.WriteFile(filePath, outputBuffer.Bytes(), os.ModePerm)
+		// format import
+		formatBytes, err := gosimports.Process(filePath, outputBuffer.Bytes(), &gosimports.Options{
+			FormatOnly: true,
+		})
+
+		if err = os.WriteFile(filePath, formatBytes, os.ModePerm); err != nil {
+			return err
+		}
 
 		change := "change"
 
@@ -143,5 +147,3 @@ func ProcessFile(filePath string, from string, to string) *cli.ExitError {
 
 	return nil
 }
-
-
