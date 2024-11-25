@@ -3,24 +3,25 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"github.com/fatih/color"
-	"github.com/rinchsan/gosimports"
-	"github.com/urfave/cli"
 	"go/parser"
 	"go/printer"
 	"go/token"
-	"golang.org/x/tools/go/ast/astutil"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/fatih/color"
+	"github.com/rinchsan/gosimports"
+	"github.com/urfave/cli"
+	"golang.org/x/tools/go/ast/astutil"
 )
 
 func main() {
 	app := cli.NewApp()
 	app.Name = "gorename"
 	app.Usage = "Rename golang package"
-	app.Version = "v1.0.0"
+	app.Version = "v1.1.0"
 	app.ArgsUsage = "[source file or directory path] [old package name] [new package name]"
 	app.Author = "jzero-io"
 
@@ -55,7 +56,8 @@ func main() {
 		// rename dir name
 		if _, err := os.Stat(filepath.Base(source)); err == nil {
 			if err = os.Rename(filepath.Base(from), filepath.Base(to)); err != nil {
-				cli.HandleExitCoder(cli.NewExitError(err, -1))
+				// cli.HandleExitCoder(cli.NewExitError(err, -1))
+				return
 			}
 		}
 
@@ -106,7 +108,7 @@ func ProcessFile(filePath string, from string, to string) error {
 			if strings.HasPrefix(importString, from) {
 				changeNum++
 
-				replacePackage := strings.Replace(importString, from, to, -1)
+				replacePackage := strings.ReplaceAll(importString, from, to)
 
 				if mImport.Name != nil && len(mImport.Name.Name) > 0 {
 					astutil.DeleteNamedImport(fSet, file, mImport.Name.Name, importString)
