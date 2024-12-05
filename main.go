@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/rinchsan/gosimports"
 	"github.com/urfave/cli"
 	"golang.org/x/tools/go/ast/astutil"
 )
@@ -129,12 +128,7 @@ func ProcessFile(filePath string, from string, to string) error {
 			return err
 		}
 
-		// format import
-		formatBytes, err := gosimports.Process(filePath, outputBuffer.Bytes(), &gosimports.Options{
-			FormatOnly: true,
-		})
-
-		if err = os.WriteFile(filePath, formatBytes, os.ModePerm); err != nil {
+		if err = os.WriteFile(filePath, outputBuffer.Bytes(), os.ModePerm); err != nil {
 			return err
 		}
 
