@@ -20,7 +20,7 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "gorename"
 	app.Usage = "Rename golang package"
-	app.Version = "v1.1.0"
+	app.Version = "v1.3.0"
 	app.ArgsUsage = "[source file or directory path] [old package name] [new package name]"
 	app.Author = "jzero-io"
 
@@ -30,12 +30,17 @@ func main() {
 			Value: "./",
 			Usage: "source package path or file path",
 		},
+		cli.BoolTFlag{
+			Name:  "quiet, q",
+			Usage: "do not print",
+		},
 	}
 
 	app.Action = func(c *cli.Context) {
 		source := c.String("source")
 		from := c.Args().Get(0)
 		to := c.Args().Get(1)
+		quiet := c.Bool("quiet")
 
 		fileInfo, err := os.Stat(source)
 		if err != nil {
@@ -50,7 +55,9 @@ func main() {
 			return
 		}
 
-		fmt.Println(color.GreenString("[INFO]"), "start update import ", from, " to ", to)
+		if !quiet {
+			fmt.Println(color.GreenString("[INFO]"), "start update import ", from, " to ", to)
+		}
 
 		// rename dir name
 		if _, err := os.Stat(filepath.Base(source)); err == nil {
@@ -61,14 +68,16 @@ func main() {
 		}
 
 		if !fileInfo.IsDir() {
-			err = ProcessFile(source, from, to)
+			err = ProcessFile(source, from, to, quiet)
 		} else {
-			err = ProcessDir(source, from, to)
+			err = ProcessDir(source, from, to, quiet)
 		}
 		if err != nil {
 			fmt.Println(color.YellowString("[WARN]"), err.Error())
 		} else {
-			fmt.Println(color.GreenString("[INFO] success!"))
+			if !quiet {
+				fmt.Println(color.GreenString("[INFO] success!"))
+			}
 		}
 	}
 	if err := app.Run(os.Args); err != nil {
@@ -76,10 +85,10 @@ func main() {
 	}
 }
 
-func ProcessDir(dir string, from string, to string) error {
+func ProcessDir(dir string, from string, to string, quiet bool) error {
 	return filepath.Walk(dir, func(filepath string, info os.FileInfo, err error) error {
 		if path.Ext(filepath) == ".go" {
-			if err = ProcessFile(filepath, from, to); err != nil {
+			if err = ProcessFile(filepath, from, to, quiet); err != nil {
 				return err
 			}
 		}
@@ -87,7 +96,7 @@ func ProcessDir(dir string, from string, to string) error {
 	})
 }
 
-func ProcessFile(filePath string, from string, to string) error {
+func ProcessFile(filePath string, from string, to string, quiet bool) error {
 	fSet := token.NewFileSet()
 
 	file, err := parser.ParseFile(fSet, filePath, nil, parser.ParseComments)
@@ -138,7 +147,9 @@ func ProcessFile(filePath string, from string, to string) error {
 			change += "s"
 		}
 
-		fmt.Println(color.GreenString("[INFO]"), changeNum, change, "in file", filePath)
+		if !quiet {
+			fmt.Println(color.GreenString("[INFO]"), changeNum, change, "in file", filePath)
+		}
 	}
 
 	return nil
